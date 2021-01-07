@@ -16,8 +16,10 @@
 
 #define LOW_PASS_FILTER_REG 0x1A
 
-double gyro_x, gyro_y, gyro_z;
-double cal_x, cal_y, cal_z;
+
+//VARIABLES
+float gyro_x, gyro_y, gyro_z;
+float cal_x, cal_y, cal_z;
 int cal_int;
 
 void mpu_setup()
@@ -31,7 +33,6 @@ void mpu_setup()
   Wire.write(MPU_GYRO_CONFIG_REG);
   Wire.write(MPU_GYRO_CONFIG_500DEG);
   Wire.endTransmission();
-
 
   //Check register to see if everything is configured correctly. If not, show warning LED and enter infinite loop to prevent from starting.
   Wire.beginTransmission(MPU_ADDRESS);
@@ -71,18 +72,53 @@ void read_gyro()
     if(cal_int == MPU_CALIBRATE_READING_NUM)
     {
       gyro_x = gyro_x - cal_x;
-      gyro_y = gyro_y - cal_y;
-      gyro_z = gyro_z - cal_z;
+      gyro_y = (gyro_y - cal_y) * -1;
+      gyro_z = (gyro_z - cal_z) * -1; //Multiplied by negative one to invert the z-axis reading. It must correspond to the standard plane image
     }
-
-  }
 }
 
 void setup()
 {
   Serial.begin(115200);
   Wire.begin();
+  pinMode(2, OUTPUT);
   mpu_setup();
-  delay(3000);
+  delay(3000); //delay helps settle down the mpu and work properly
 
+  for(cal_int = 0; cal_int < MPU_CALIBRATE_READING_NUM; cal_int++)
+  {
+    read_gyro();
+    cal_x = cal_x + gyro_x;
+    cal_y = cal_y + gyro_y;
+    cal_z = cal_z + gyro_z;
+  }
+
+  cal_x = cal_x/MPU_CALIBRATE_READING_NUM;
+  cal_y = cal_y/MPU_CALIBRATE_READING_NUM;
+  cal_z = cal_z/MPU_CALIBRATE_READING_NUM;
+
+  Serial.print("X:  ");
+  Serial.print(cal_x);
+
+  Serial.print("Y:  ");
+  Serial.print(cal_y);
+
+  Serial.print("Z:  ");
+  Serial.print(cal_z);
+
+  delay(5000);
+
+}
+
+void loop()
+{
+  read_gyro();
+  Serial.print("\t X: ");
+  Serial.print(gyro_x/MPU_GYRO_READINGSCALE_500DEG);
+  Serial.print("\t Y: ");
+  Serial.print(gyro_y/MPU_GYRO_READINGSCALE_500DEG);
+  Serial.print("\t  Z: ");
+  Serial.print(gyro_z/MPU_GYRO_READINGSCALE_500DEG);
+  Serial.println();
+  delay(100);
 }
