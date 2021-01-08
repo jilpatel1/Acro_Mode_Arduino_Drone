@@ -26,7 +26,7 @@ int arm_indicator_led;
 
 //Transmitter and Receiver Variables
 byte channel_1_state, channel_2_state, channel_3_state, channel_4_state;
-//int channel_1_pulse, channel_2_pulse, channel_3_pulse, channel_4_pulse;
+int channel_1_pulse, channel_2_pulse, channel_3_pulse, channel_4_pulse;
 unsigned long timer_1, timer_2, timer_3, timer_4;
 unsigned long current_time;
 unsigned long zero_timer;
@@ -203,113 +203,72 @@ void setup()
   PCMSK2 |= (1 << PCINT18);  // set PCINT18 (digital input 10)to trigger an interrupt on state change
   PCMSK2 |= (1 << PCINT19);  // set PCINT18 (digital input 11)to trigger an interrupt on state change
 
-  wait = micros();
-  while(wait + 3000000 > micros());
+  // wait = micros();
+  // while(wait + 3000000 > micros());
 
-  while(1)
-  {
-    if((convert_receiver_channel_pulse(3) > 1100) || (convert_receiver_channel_pulse(4) > 1100))
-    {
-      arm_indicator_led = arm_indicator_led + 1;
-      PORTG |= B00100000;
-      PORTE |= B00001000;
-      PORTH |= B00011000;
-      delayMicroseconds(1000);
-      PORTG &= B11011111;
-      PORTE &= B11110111;
-      PORTH &= B11100111;
-      delay(3);
-      if(arm_indicator_led == 125)
-      {
-        digitalWrite(2, !digitalRead(2));
-        arm_indicator_led = 0;
-      }
-    }
-
-    if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
-    {
-      break;
-    }
-  }
-
-  //while(convert_receiver_channel_pulse(3) > 1100);
+  // while(1)
   // {
-  //   Serial.print("\t");
-  //   Serial.print(convert_receiver_channel_pulse(3));
-  //   Serial.print("\t");
-  //   Serial.print(convert_receiver_channel_pulse(4));
-  //   Serial.println();
-  //   arm_indicator_led = arm_indicator_led + 1;
-  //   PORTG |= B00100000;
-  //   PORTE |= B00001000;
-  //   PORTH |= B00011000;
-  //   delayMicroseconds(1000);
-  //   PORTG &= B11011111;
-  //   PORTE &= B11110111;
-  //   PORTH &= B11100111;
-  //   delay(3);
-  //   if(arm_indicator_led == 125)
+  //   if((convert_receiver_channel_pulse(3) > 1100) || (convert_receiver_channel_pulse(4) > 1100))
   //   {
-  //     digitalWrite(2, !digitalRead(2));
-  //     arm_indicator_led = 0;
+  //     arm_indicator_led = arm_indicator_led + 1;
+  //     PORTG |= B00100000;
+  //     PORTE |= B00001000;
+  //     PORTH |= B00011000;
+  //     delayMicroseconds(1000);
+  //     PORTG &= B11011111;
+  //     PORTE &= B11110111;
+  //     PORTH &= B11100111;
+  //     delay(3);
+  //     if(arm_indicator_led == 125)
+  //     {
+  //       digitalWrite(2, !digitalRead(2));
+  //       arm_indicator_led = 0;
+  //     }
+  //   }
+
+  //   if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
+  //   {
+  //     break;
   //   }
   // }
-  arm_indicator_led = 0;
-  digitalWrite(2, LOW);
-  zero_timer = micros();
+
+  // arm_indicator_led = 0;
+  // digitalWrite(2, LOW);
+   zero_timer = micros();
 }
 
 void loop()
 {
-  // read_gyro();
-  // Serial.print("\t X: ");
-  // Serial.print(gyro_x/MPU_GYRO_READINGSCALE_500DEG);
-  // Serial.print("\t Y: ");
-  // Serial.print(gyro_y/MPU_GYRO_READINGSCALE_500DEG);
-  // Serial.print("\t  Z: ");
-  // Serial.print(gyro_z/MPU_GYRO_READINGSCALE_500DEG);
-  // Serial.println();
-  // delay(100);
-  // Serial.print("\t");
-  // Serial.print(convert_receiver_channel_pulse(1));
-  // Serial.print("\t");
-  // Serial.print(convert_receiver_channel_pulse(2));
-  // Serial.print("\t");
-  // Serial.print(convert_receiver_channel_pulse(3));
-  // Serial.print("\t");
-  // Serial.print(convert_receiver_channel_pulse(4));
-  // Serial.println();
+  channel_3_pulse = convert_receiver_channel_pulse(3); 
+  while(zero_timer + 4000 > micros());
+  zero_timer = micros();
+  PORTG |= B00100000;
+  PORTE |= B00001000;
+  PORTH |= B00011000;
+  timer_channel_1 = channel_3_pulse + zero_timer;
+  timer_channel_2 = channel_3_pulse + zero_timer;
+  timer_channel_3 = channel_3_pulse + zero_timer;
+  timer_channel_4 = channel_3_pulse + zero_timer;
 
-  while(zero_timer + 4000 > micros())
+  //while((PORTG >= 223) && (PORTE >= 247) && (PORTH >= 231))
+  while(((PORTH & B00011000) != 0) && ((PORTG & B00100000) != 0) && ((PORTE & B00001000) != 0))
   {
-    zero_timer = micros();
-    PORTG |= B00100000;
-    PORTE |= B00001000;
-    PORTH |= B00011000;
-    timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
-    timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
-    timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
-    timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
-
-    while((PORTG >= 223) && (PORTE >= 247) && (PORTH >= 231))
+    esc_loop_timer = micros();
+    if(timer_channel_1 <= esc_loop_timer)
     {
-      esc_loop_timer = micros();
-      if(timer_channel_1 <= esc_loop_timer)
-      {
-        PORTG &= B11011111;
-      }
-      if(timer_channel_2 <= esc_loop_timer)
-      {
-        PORTE &= B11110111;
-      }
-      if(timer_channel_3 <= esc_loop_timer)
-      {
-        PORTH &= B11110111;
-      }
-      if(timer_channel_4 <= esc_loop_timer)
-      {
-        PORTH &= B11101111;
-      }
+      PORTG &= B11011111;
+    }
+    if(timer_channel_2 <= esc_loop_timer)
+    {
+      PORTE &= B11110111;
+    }
+    if(timer_channel_3 <= esc_loop_timer)
+    {
+      PORTH &= B11110111;
+    }
+    if(timer_channel_4 <= esc_loop_timer)
+    {
+      PORTH &= B11101111;
     }
   }
 }
