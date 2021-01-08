@@ -177,9 +177,8 @@ void setup()
   Serial.begin(115200);
   Wire.begin();
   
-  DDRE |= B00011000; // same thing as saying pinMode(2, OUTPUT);  //PORTE |= B00010000; same thing as saying digitalWrite(2, HIGH);  //PORTE &= B11101111; same thing as saying digitalWrite(2, LOW); esc pin 5
-  DDRG |= B00100000; // esc pin 4
-  DDRH |= B00011000; // esc pin 6, esc pin 7
+  DDRE |= B00010000; // same thing as saying pinMode(2, OUTPUT);  //PORTE |= B00010000; same thing as saying digitalWrite(2, HIGH);  //PORTE &= B11101111; same thing as saying digitalWrite(2, LOW); 
+  DDRH |= B01111000; // esc pin 6,7,8,9
 
   mpu_setup();
   delay(3000); //delay helps settle down the mpu and work properly
@@ -198,10 +197,10 @@ void setup()
 
   //Setup Interrupt Pins for Transmitter and Receiver
   PCICR |= (1 << PCIE2);    // set PCIE2 to enable PCMSK0 scan
-  PCMSK2 |= (1 << PCINT16);  // set PCINT16 (digital input 8) to trigger an interrupt on state change
-  PCMSK2 |= (1 << PCINT17);  // set PCINT17 (digital input 9)to trigger an interrupt on state change
-  PCMSK2 |= (1 << PCINT18);  // set PCINT18 (digital input 10)to trigger an interrupt on state change
-  PCMSK2 |= (1 << PCINT19);  // set PCINT18 (digital input 11)to trigger an interrupt on state change
+  PCMSK2 |= (1 << PCINT16);  // set PCINT16 (analog pin 8) to trigger an interrupt on state change
+  PCMSK2 |= (1 << PCINT17);  // set PCINT17 (analog pin 9)to trigger an interrupt on state change
+  PCMSK2 |= (1 << PCINT18);  // set PCINT18 (analog pin 10)to trigger an interrupt on state change
+  PCMSK2 |= (1 << PCINT19);  // set PCINT18 (analog pin 11)to trigger an interrupt on state change
 
   // wait = micros();
   // while(wait + 3000000 > micros());
@@ -242,33 +241,30 @@ void loop()
   channel_3_pulse = convert_receiver_channel_pulse(3); 
   while(zero_timer + 4000 > micros());
   zero_timer = micros();
-  PORTG |= B00100000;
-  PORTE |= B00001000;
-  PORTH |= B00011000;
+  PORTH |= B01111000;
   timer_channel_1 = channel_3_pulse + zero_timer;
   timer_channel_2 = channel_3_pulse + zero_timer;
   timer_channel_3 = channel_3_pulse + zero_timer;
   timer_channel_4 = channel_3_pulse + zero_timer;
 
-  //while((PORTG >= 223) && (PORTE >= 247) && (PORTH >= 231))
-  while(((PORTH & B00011000) != 0) && ((PORTG & B00100000) != 0) && ((PORTE & B00001000) != 0))
+  while((PORTH & B01111000) != 0)
   {
     esc_loop_timer = micros();
     if(timer_channel_1 <= esc_loop_timer)
     {
-      PORTG &= B11011111;
+      PORTH &= B11110111;
     }
     if(timer_channel_2 <= esc_loop_timer)
     {
-      PORTE &= B11110111;
+      PORTH &= B11101111;
     }
     if(timer_channel_3 <= esc_loop_timer)
     {
-      PORTH &= B11110111;
+      PORTH &= B11011111;
     }
     if(timer_channel_4 <= esc_loop_timer)
     {
-      PORTH &= B11101111;
+      PORTH &= B10111111;
     }
   }
 }
