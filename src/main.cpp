@@ -15,6 +15,7 @@
 #define MPU_ADDRESS 0b1101000
 
 #define LOW_PASS_FILTER_REG 0x1A
+#define ROLL_RATE_FACTOR 3.0 //lower this value for faster roll rates. use desmos to check. Do not go above (2000 pulse, 500 degrees/sec)
 
 unsigned long wait;
 
@@ -38,6 +39,29 @@ int raw_receiver_pulse[4];
 int channel_center_values_array[4] = {1500,1500,1500,1500};
 int channel_high_values_array[4] = {2000,1988,1988,1984};
 int channel_low_values_array[4] = {1020,1016,1012,988};
+
+int throttle, battery_voltage;
+
+//PID Variables
+float pid_p_gain_roll = 1.3;               //Gain setting for the roll P-controller (1.3)
+float pid_i_gain_roll = 0.05;              //Gain setting for the roll I-controller (0.3)
+float pid_d_gain_roll = 15;                //Gain setting for the roll D-controller (15)
+int pid_max_roll = 400;                    //Maximum output of the PID-controller (+/-)
+
+float pid_p_gain_pitch = pid_p_gain_roll;  //Gain setting for the pitch P-controller.
+float pid_i_gain_pitch = pid_i_gain_roll;  //Gain setting for the pitch I-controller.
+float pid_d_gain_pitch = pid_d_gain_roll;  //Gain setting for the pitch D-controller.
+int pid_max_pitch = pid_max_roll;          //Maximum output of the PID-controller (+/-)
+
+float pid_p_gain_yaw = 4.0;                //Gain setting for the pitch P-controller. //4.0
+float pid_i_gain_yaw = 0.02;               //Gain setting for the pitch I-controller. //0.02
+float pid_d_gain_yaw = 0.0;                //Gain setting for the pitch D-controller.
+int pid_max_yaw = 400;                     //Maximum output of the PID-controller (+/-)
+
+float pid_error_temp;
+float pid_i_mem_roll, pid_roll_setpoint, gyro_roll_input, pid_output_roll, pid_last_roll_d_error;
+float pid_i_mem_pitch, pid_pitch_setpoint, gyro_pitch_input, pid_output_pitch, pid_last_pitch_d_error;
+float pid_i_mem_yaw, pid_yaw_setpoint, gyro_yaw_input, pid_output_yaw, pid_last_yaw_d_error;
 
 //Interrupt service routine to measure the transmitter raw pulse length
 ISR(PCINT2_vect)
@@ -175,6 +199,79 @@ void read_gyro()
     }
 }
 
+void calculate_pid()
+{
+  //Roll calculations
+  pid_error_temp = gyro_roll_input - pid_roll_setpoint;
+  pid_i_mem_roll = pid_i_mem_roll + (pid_error_temp * pid_i_gain_roll);
+  if(pid_i_mem_roll > pid_max_roll)
+  {
+    pid_i_mem_roll = pid_max_roll;
+  }
+  else if(pid_i_mem_roll < pid_max_roll * -1)
+  {
+    pid_i_mem_roll = pid_max_roll * -1;
+  }
+
+  pid_output_roll = (pid_error_temp * pid_p_gain_roll) + pid_i_mem_roll + ((pid_error_temp - pid_last_roll_d_error)* pid_d_gain_roll);
+  if(pid_output_roll > pid_max_roll)
+  {
+    pid_output_roll = pid_max_roll;
+  }
+  else if(pid_output_roll < pid_max_roll * -1)
+  {
+    pid_output_roll = pid_max_roll * -1;
+  }
+
+  pid_last_roll_d_error = pid_error_temp;
+
+  //Pitch calculations
+  pid_error_temp = gyro_pitch_input - pid_pitch_setpoint;
+  pid_i_mem_pitch = pid_i_mem_pitch + (pid_error_temp * pid_i_gain_pitch);
+  if(pid_i_mem_pitch > pid_max_pitch)
+  {
+    pid_i_mem_pitch = pid_max_pitch;
+  }
+  else if(pid_i_mem_pitch < pid_max_pitch * -1)
+  {
+    pid_i_mem_pitch = pid_max_pitch * -1;
+  }
+
+  pid_output_pitch = (pid_error_temp * pid_p_gain_pitch) + pid_i_mem_pitch + ((pid_error_temp - pid_last_pitch_d_error)* pid_d_gain_pitch);
+  if(pid_output_pitch > pid_max_pitch)
+  {
+    pid_output_pitch = pid_max_pitch;
+  }
+  else if(pid_output_pitch < pid_max_pitch * -1)
+  {
+    pid_output_pitch = pid_max_pitch * -1;
+  }
+  pid_last_pitch_d_error = pid_error_temp;
+
+  //Yaw calculations
+  pid_error_temp = gyro_yaw_input - pid_yaw_setpoint;
+  pid_i_mem_yaw = pid_i_mem_yaw + (pid_error_temp * pid_i_gain_yaw);
+  if(pid_i_mem_yaw > pid_max_yaw)
+  {
+    pid_i_mem_yaw = pid_max_yaw;
+  }
+  else if(pid_i_mem_yaw < pid_max_yaw * -1)
+  {
+    pid_i_mem_yaw = pid_max_yaw * -1;
+  }
+
+  pid_output_yaw = (pid_error_temp * pid_p_gain_yaw) + pid_i_mem_yaw + ((pid_error_temp - pid_last_yaw_d_error)* pid_d_gain_yaw);
+  if(pid_output_yaw > pid_max_yaw)
+  {
+    pid_output_yaw = pid_max_yaw;
+  }
+  else if(pid_output_yaw < pid_max_yaw * -1)
+  {
+    pid_output_yaw = pid_max_yaw * -1;
+  }
+  pid_last_yaw_d_error = pid_error_temp;
+}
+
 //Setup before flying
 void setup()
 {
@@ -242,33 +339,104 @@ void setup()
 
 void loop()
 {
-  while(zero_timer + 4000 > micros());
-  zero_timer = micros();
-  PORTH |= B01111000;
-  timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
-  timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
-  timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
-  timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
+  //Read the gyro and convert it to degrees/second. Use the complementary filter for non-jittery data.
+  read_gyro();
+  gyro_roll_input = (gyro_roll_input * 0.8) + ((gyro_x/65.5) * 0.2);
+  gyro_pitch_input = (gyro_pitch_input * 0.8) + ((gyro_y/65.5) * 0.2);
+  gyro_yaw_input = (gyro_yaw_input * 0.8) + ((gyro_z/65.5) * 0.2);
 
-  while((PORTH & B01111000) != 0)
+  //In order to start the drone, throttle down and yaw left.
+  if((convert_receiver_channel_pulse(3) < 1050) && (convert_receiver_channel_pulse(4) < 1050))
   {
-    esc_loop_timer = micros();
-    if(timer_channel_1 <= esc_loop_timer)
-    {
-      PORTH &= B11110111;
-    }
-    if(timer_channel_2 <= esc_loop_timer)
-    {
-      PORTH &= B11101111;
-    }
-    if(timer_channel_3 <= esc_loop_timer)
-    {
-      PORTH &= B11011111;
-    }
-    if(timer_channel_4 <= esc_loop_timer)
-    {
-      PORTH &= B10111111;
-    }
+    status = 1;
   }
+  //Then bring your yaw to the middle. Erase all the PID I and D errors for a smooth start.
+  if((status == 1) && (convert_receiver_channel_pulse(3) < 1050) && (convert_receiver_channel_pulse(4) > 1450))
+  {
+    status = 2;
+    pid_i_mem_roll = 0;
+    pid_last_roll_d_error = 0;
+    pid_i_mem_pitch = 0;
+    pid_last_pitch_d_error = 0;
+    pid_i_mem_yaw = 0;
+    pid_last_roll_d_error = 0;
+  }
+
+  //To stop the drone, throttle down and yaw right.
+  if((status == 2) && (convert_receiver_channel_pulse(3) < 1050) && (convert_receiver_channel_pulse(4) > 1950))
+  {
+    status = 0;
+  }
+
+  pid_roll_setpoint = 0;
+  pid_pitch_setpoint = 0;
+  pid_yaw_setpoint = 0;
+
+  if(convert_receiver_channel_pulse(1) > 1508)
+  {
+    pid_roll_setpoint = convert_receiver_channel_pulse(1) - 1508/ROLL_RATE_FACTOR;
+  }
+  else if(convert_receiver_channel_pulse(1) < 1492)
+  {
+    pid_roll_setpoint = convert_receiver_channel_pulse(1) - 1492/ROLL_RATE_FACTOR;
+  }
+
+  if(convert_receiver_channel_pulse(2) > 1508)
+  {
+    pid_pitch_setpoint = convert_receiver_channel_pulse(2) - 1508/ROLL_RATE_FACTOR;
+  }
+  else if(convert_receiver_channel_pulse(2) < 1492)
+  {
+    pid_pitch_setpoint = convert_receiver_channel_pulse(2) - 1492/ROLL_RATE_FACTOR;
+  }
+
+  if(convert_receiver_channel_pulse(4) > 1508)
+  {
+    pid_yaw_setpoint = convert_receiver_channel_pulse(4) - 1508/ROLL_RATE_FACTOR;
+  }
+  else if(convert_receiver_channel_pulse(4) < 1492)
+  {
+    pid_yaw_setpoint = convert_receiver_channel_pulse(4) - 1492/ROLL_RATE_FACTOR;
+  }
+
+  calculate_pid();
+
+  battery_voltage = (battery_voltage * 0.92) + (analogRead(0) + )
+
+
+
+
+
+
+
+
+  // while(zero_timer + 4000 > micros());
+  // zero_timer = micros();
+  // PORTH |= B01111000;
+  // timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
+  // timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
+  // timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
+  // timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
+
+  // while((PORTH & B01111000) != 0)
+  // {
+  //   esc_loop_timer = micros();
+  //   if(timer_channel_1 <= esc_loop_timer)
+  //   {
+  //     PORTH &= B11110111;
+  //   }
+  //   if(timer_channel_2 <= esc_loop_timer)
+  //   {
+  //     PORTH &= B11101111;
+  //   }
+  //   if(timer_channel_3 <= esc_loop_timer)
+  //   {
+  //     PORTH &= B11011111;
+  //   }
+  //   if(timer_channel_4 <= esc_loop_timer)
+  //   {
+  //     PORTH &= B10111111;
+  //   }
+  // }
 }
 
