@@ -16,17 +16,23 @@
 
 #define LOW_PASS_FILTER_REG 0x1A
 
+unsigned long wait;
 
-//VARIABLES
+//Gyro Variables
 float gyro_x, gyro_y, gyro_z;
 float cal_x, cal_y, cal_z;
 int cal_int;
+int arm_indicator_led;
 
 //Transmitter and Receiver Variables
 byte channel_1_state, channel_2_state, channel_3_state, channel_4_state;
-int channel_1_pulse, channel_2_pulse, channel_3_pulse, channel_4_pulse;
+//int channel_1_pulse, channel_2_pulse, channel_3_pulse, channel_4_pulse;
 unsigned long timer_1, timer_2, timer_3, timer_4;
 unsigned long current_time;
+unsigned long zero_timer;
+unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4;
+unsigned long esc_loop_timer;
+
 int receiver_pulse[4];
 int channel_center_values_array[4] = {1500,1500,1500,1500};
 int channel_high_values_array[4] = {2000,1988,1988,1984};
@@ -135,7 +141,7 @@ void mpu_setup()
   {
     while(1)
     {
-      digitalWrite(2,HIGH);
+      PORTE |= B00010000; //same thing as saying digitalWrite(2, HIGH)
       delay(10000);
     }
   }
@@ -170,7 +176,11 @@ void setup()
 {
   Serial.begin(115200);
   Wire.begin();
-  pinMode(2, OUTPUT);
+  
+  DDRE |= B00011000; // same thing as saying pinMode(2, OUTPUT);  //PORTE |= B00010000; same thing as saying digitalWrite(2, HIGH);  //PORTE &= B11101111; same thing as saying digitalWrite(2, LOW); esc pin 5
+  DDRG |= B00100000; // esc pin 4
+  DDRH |= B00011000; // esc pin 6, esc pin 7
+
   mpu_setup();
   delay(3000); //delay helps settle down the mpu and work properly
 
@@ -187,11 +197,66 @@ void setup()
   cal_z = cal_z/MPU_CALIBRATE_READING_NUM;
 
   //Setup Interrupt Pins for Transmitter and Receiver
-  PCICR |= (1 << PCIE2);    // set PCIE0 to enable PCMSK0 scan
+  PCICR |= (1 << PCIE2);    // set PCIE2 to enable PCMSK0 scan
   PCMSK2 |= (1 << PCINT16);  // set PCINT16 (digital input 8) to trigger an interrupt on state change
   PCMSK2 |= (1 << PCINT17);  // set PCINT17 (digital input 9)to trigger an interrupt on state change
   PCMSK2 |= (1 << PCINT18);  // set PCINT18 (digital input 10)to trigger an interrupt on state change
   PCMSK2 |= (1 << PCINT19);  // set PCINT18 (digital input 11)to trigger an interrupt on state change
+
+  wait = micros();
+  while(wait + 3000000 > micros());
+
+  while(1)
+  {
+    if((convert_receiver_channel_pulse(3) > 1100) || (convert_receiver_channel_pulse(4) > 1100))
+    {
+      arm_indicator_led = arm_indicator_led + 1;
+      PORTG |= B00100000;
+      PORTE |= B00001000;
+      PORTH |= B00011000;
+      delayMicroseconds(1000);
+      PORTG &= B11011111;
+      PORTE &= B11110111;
+      PORTH &= B11100111;
+      delay(3);
+      if(arm_indicator_led == 125)
+      {
+        digitalWrite(2, !digitalRead(2));
+        arm_indicator_led = 0;
+      }
+    }
+
+    if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
+    {
+      break;
+    }
+  }
+
+  //while(convert_receiver_channel_pulse(3) > 1100);
+  // {
+  //   Serial.print("\t");
+  //   Serial.print(convert_receiver_channel_pulse(3));
+  //   Serial.print("\t");
+  //   Serial.print(convert_receiver_channel_pulse(4));
+  //   Serial.println();
+  //   arm_indicator_led = arm_indicator_led + 1;
+  //   PORTG |= B00100000;
+  //   PORTE |= B00001000;
+  //   PORTH |= B00011000;
+  //   delayMicroseconds(1000);
+  //   PORTG &= B11011111;
+  //   PORTE &= B11110111;
+  //   PORTH &= B11100111;
+  //   delay(3);
+  //   if(arm_indicator_led == 125)
+  //   {
+  //     digitalWrite(2, !digitalRead(2));
+  //     arm_indicator_led = 0;
+  //   }
+  // }
+  arm_indicator_led = 0;
+  digitalWrite(2, LOW);
+  zero_timer = micros();
 }
 
 void loop()
@@ -205,13 +270,47 @@ void loop()
   // Serial.print(gyro_z/MPU_GYRO_READINGSCALE_500DEG);
   // Serial.println();
   // delay(100);
-  Serial.print("\t");
-  Serial.print(convert_receiver_channel_pulse(1));
-  Serial.print("\t");
-  Serial.print(convert_receiver_channel_pulse(2));
-  Serial.print("\t");
-  Serial.print(convert_receiver_channel_pulse(3));
-  Serial.print("\t");
-  Serial.print(convert_receiver_channel_pulse(4));
-  Serial.println();
+  // Serial.print("\t");
+  // Serial.print(convert_receiver_channel_pulse(1));
+  // Serial.print("\t");
+  // Serial.print(convert_receiver_channel_pulse(2));
+  // Serial.print("\t");
+  // Serial.print(convert_receiver_channel_pulse(3));
+  // Serial.print("\t");
+  // Serial.print(convert_receiver_channel_pulse(4));
+  // Serial.println();
+
+  while(zero_timer + 4000 > micros())
+  {
+    zero_timer = micros();
+    PORTG |= B00100000;
+    PORTE |= B00001000;
+    PORTH |= B00011000;
+    timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
+    timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
+    timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
+    timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
+
+    while((PORTG >= 223) && (PORTE >= 247) && (PORTH >= 231))
+    {
+      esc_loop_timer = micros();
+      if(timer_channel_1 <= esc_loop_timer)
+      {
+        PORTG &= B11011111;
+      }
+      if(timer_channel_2 <= esc_loop_timer)
+      {
+        PORTE &= B11110111;
+      }
+      if(timer_channel_3 <= esc_loop_timer)
+      {
+        PORTH &= B11110111;
+      }
+      if(timer_channel_4 <= esc_loop_timer)
+      {
+        PORTH &= B11101111;
+      }
+    }
+  }
 }
+
