@@ -18,27 +18,28 @@
 
 unsigned long wait;
 
-//Gyro Variables
+//Gyro variables
 float gyro_x, gyro_y, gyro_z;
 float cal_x, cal_y, cal_z;
 int cal_int;
-int arm_indicator_led;
 
-//Transmitter and Receiver Variables
+//Startup variables
+int status;
+
+//Transmitter and receiver variables
 byte channel_1_state, channel_2_state, channel_3_state, channel_4_state;
-int channel_1_pulse, channel_2_pulse, channel_3_pulse, channel_4_pulse;
 unsigned long timer_1, timer_2, timer_3, timer_4;
 unsigned long current_time;
 unsigned long zero_timer;
 unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4;
 unsigned long esc_loop_timer;
 
-int receiver_pulse[4];
+int raw_receiver_pulse[4];
 int channel_center_values_array[4] = {1500,1500,1500,1500};
 int channel_high_values_array[4] = {2000,1988,1988,1984};
 int channel_low_values_array[4] = {1020,1016,1012,988};
 
-//Initializing Transmitter Receiver Function
+//Interrupt service routine to measure the transmitter raw pulse length
 ISR(PCINT2_vect)
 {
   current_time = micros();
@@ -52,7 +53,7 @@ ISR(PCINT2_vect)
   else if((channel_1_state == 1) && !(PINK & B00000001))
   {
     channel_1_state = 0;
-    receiver_pulse[0] = current_time - timer_1;
+    raw_receiver_pulse[0] = current_time - timer_1;
   }
 
   //Channel 2
@@ -64,7 +65,7 @@ ISR(PCINT2_vect)
   else if((channel_2_state == 1) && !(PINK & B00000010))
   {
     channel_2_state = 0;
-    receiver_pulse[1] = current_time - timer_2;
+    raw_receiver_pulse[1] = current_time - timer_2;
   }
 
   //Channel 3
@@ -76,7 +77,7 @@ ISR(PCINT2_vect)
   else if((channel_3_state == 1) && !(PINK & B00000100))
   {
     channel_3_state = 0;
-    receiver_pulse[2] = current_time - timer_3;
+    raw_receiver_pulse[2] = current_time - timer_3;
   }
 
   //Channel 4
@@ -88,10 +89,11 @@ ISR(PCINT2_vect)
   else if((channel_4_state == 1) && !(PINK & B00001000))
   {
     channel_4_state = 0;
-    receiver_pulse[3] = current_time - timer_4;
+    raw_receiver_pulse[3] = current_time - timer_4;
   }
 }
 
+//Scaling the raw pulse length to a standardized 1000ms to 2000ms pulse
 int convert_receiver_channel_pulse(byte channel_number)
 {
   int center, high, low, actual;
@@ -100,7 +102,7 @@ int convert_receiver_channel_pulse(byte channel_number)
   center = channel_center_values_array[channel_number-1];
   high = channel_high_values_array[channel_number-1];
   low = channel_low_values_array[channel_number-1];
-  actual = receiver_pulse[channel_number-1];
+  actual = raw_receiver_pulse[channel_number-1];
 
   if(actual < center)
   {                                                                            //The actual receiver value is lower than the center value
@@ -117,7 +119,7 @@ int convert_receiver_channel_pulse(byte channel_number)
   else return 1500;
 }
 
-
+//Starting up the mpu and configuring its settings
 void mpu_setup()
 {
   Wire.beginTransmission(MPU_ADDRESS);
@@ -152,6 +154,7 @@ void mpu_setup()
   Wire.endTransmission();
 }
 
+//Read the raw gyro values and subtract the offset if gyro was calibrated
 void read_gyro()
 {
     Wire.beginTransmission(MPU_ADDRESS);
@@ -172,6 +175,7 @@ void read_gyro()
     }
 }
 
+//Setup before flying
 void setup()
 {
   Serial.begin(115200);
@@ -183,6 +187,7 @@ void setup()
   mpu_setup();
   delay(3000); //delay helps settle down the mpu and work properly
 
+  //Read 2000 raw gyro values to calibrate the sensor
   for(cal_int = 0; cal_int < MPU_CALIBRATE_READING_NUM; cal_int++)
   {
     read_gyro();
@@ -191,6 +196,7 @@ void setup()
     cal_z = cal_z + gyro_z;
   }
 
+  //Divide the accumulated raw gyro values by the number of readings to get the average offset
   cal_x = cal_x/MPU_CALIBRATE_READING_NUM;
   cal_y = cal_y/MPU_CALIBRATE_READING_NUM;
   cal_z = cal_z/MPU_CALIBRATE_READING_NUM;
@@ -202,50 +208,47 @@ void setup()
   PCMSK2 |= (1 << PCINT18);  // set PCINT18 (analog pin 10)to trigger an interrupt on state change
   PCMSK2 |= (1 << PCINT19);  // set PCINT18 (analog pin 11)to trigger an interrupt on state change
 
-  // wait = micros();
-  // while(wait + 3000000 > micros());
+  //Wait a little for everything to settle down to prevent getting 0 transmitter pulses on startup.
+  wait = micros();
+  while(wait + 3000000 > micros());
 
-  // while(1)
-  // {
-  //   if((convert_receiver_channel_pulse(3) > 1100) || (convert_receiver_channel_pulse(4) > 1100))
-  //   {
-  //     arm_indicator_led = arm_indicator_led + 1;
-  //     PORTG |= B00100000;
-  //     PORTE |= B00001000;
-  //     PORTH |= B00011000;
-  //     delayMicroseconds(1000);
-  //     PORTG &= B11011111;
-  //     PORTE &= B11110111;
-  //     PORTH &= B11100111;
-  //     delay(3);
-  //     if(arm_indicator_led == 125)
-  //     {
-  //       digitalWrite(2, !digitalRead(2));
-  //       arm_indicator_led = 0;
-  //     }
-  //   }
+  //This is the startup sequence for the drone. Keep waiting and blink the LED until the user has the throttle in the lowest position and the stick is moved to the left. 
+  while(1)
+  {
+    if((convert_receiver_channel_pulse(3) > 1100) || (convert_receiver_channel_pulse(4) > 1100))
+    {
+      status = status + 1;
+      PORTH |= B01111000;
+      delayMicroseconds(1000);
+      PORTH &= B10000111;
+      delay(3);
+      if(status == 125)
+      {
+        digitalWrite(2, !digitalRead(2));
+        status = 0;
+      }
+    }
 
-  //   if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
-  //   {
-  //     break;
-  //   }
-  // }
+    if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
+    {
+      break;
+    }
+  }
 
-  // arm_indicator_led = 0;
-  // digitalWrite(2, LOW);
-   zero_timer = micros();
+  status = 0;
+  digitalWrite(2, LOW);
+  zero_timer = micros();
 }
 
 void loop()
 {
-  channel_3_pulse = convert_receiver_channel_pulse(3); 
   while(zero_timer + 4000 > micros());
   zero_timer = micros();
   PORTH |= B01111000;
-  timer_channel_1 = channel_3_pulse + zero_timer;
-  timer_channel_2 = channel_3_pulse + zero_timer;
-  timer_channel_3 = channel_3_pulse + zero_timer;
-  timer_channel_4 = channel_3_pulse + zero_timer;
+  timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
+  timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
+  timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
+  timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
 
   while((PORTH & B01111000) != 0)
   {
