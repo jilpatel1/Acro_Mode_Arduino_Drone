@@ -44,9 +44,9 @@ int throttle, battery_voltage;
 int esc_1, esc_2, esc_3, esc_4;
 
 //PID Variables
-float pid_p_gain_roll = 1.3;               //Gain setting for the roll P-controller (1.3)
-float pid_i_gain_roll = 0.05;              //Gain setting for the roll I-controller (0.3)
-float pid_d_gain_roll = 15;                //Gain setting for the roll D-controller (15)
+float pid_p_gain_roll = 1.30;   //1.3            //Gain setting for the roll P-controller (1.3)
+float pid_i_gain_roll = 0.05;  //0.05            //Gain setting for the roll I-controller (0.3)
+float pid_d_gain_roll = 15.00;    //15            //Gain setting for the roll D-controller (15)
 int pid_max_roll = 400;                    //Maximum output of the PID-controller (+/-)
 
 float pid_p_gain_pitch = pid_p_gain_roll;  //Gain setting for the pitch P-controller.
@@ -54,9 +54,9 @@ float pid_i_gain_pitch = pid_i_gain_roll;  //Gain setting for the pitch I-contro
 float pid_d_gain_pitch = pid_d_gain_roll;  //Gain setting for the pitch D-controller.
 int pid_max_pitch = pid_max_roll;          //Maximum output of the PID-controller (+/-)
 
-float pid_p_gain_yaw = 4.0;                //Gain setting for the pitch P-controller. //4.0
-float pid_i_gain_yaw = 0.02;               //Gain setting for the pitch I-controller. //0.02
-float pid_d_gain_yaw = 0.0;                //Gain setting for the pitch D-controller.
+float pid_p_gain_yaw = 4.00;   //4.0             //Gain setting for the pitch P-controller. //4.0
+float pid_i_gain_yaw = 0.02;  //0.02             //Gain setting for the pitch I-controller. //0.02
+float pid_d_gain_yaw = 0.00;   //0.0             //Gain setting for the pitch D-controller.
 int pid_max_yaw = 400;                     //Maximum output of the PID-controller (+/-)
 
 float pid_error_temp;
@@ -276,7 +276,7 @@ void calculate_pid()
 //Setup before flying
 void setup()
 {
-  Serial.begin(115200);
+  //Serial.begin(115200); 
   Wire.begin();
   
   DDRE |= B00010000; // same thing as saying pinMode(2, OUTPUT);  //PORTE |= B00010000; same thing as saying digitalWrite(2, HIGH);  //PORTE &= B11101111; same thing as saying digitalWrite(2, LOW); 
@@ -373,34 +373,36 @@ void loop()
   pid_pitch_setpoint = 0;
   pid_yaw_setpoint = 0;
 
+ 
   if(convert_receiver_channel_pulse(1) > 1508)
   {
-    pid_roll_setpoint = convert_receiver_channel_pulse(1) - 1508/ROLL_RATE_FACTOR;
+    pid_roll_setpoint = (convert_receiver_channel_pulse(1) - 1508)/ROLL_RATE_FACTOR;
   }
   else if(convert_receiver_channel_pulse(1) < 1492)
   {
-    pid_roll_setpoint = convert_receiver_channel_pulse(1) - 1492/ROLL_RATE_FACTOR;
+    pid_roll_setpoint = (convert_receiver_channel_pulse(1) - 1492)/ROLL_RATE_FACTOR;
   }
 
   if(convert_receiver_channel_pulse(2) > 1508)
   {
-    pid_pitch_setpoint = convert_receiver_channel_pulse(2) - 1508/ROLL_RATE_FACTOR;
+    pid_pitch_setpoint = (convert_receiver_channel_pulse(2) - 1508)/ROLL_RATE_FACTOR;
   }
   else if(convert_receiver_channel_pulse(2) < 1492)
   {
-    pid_pitch_setpoint = convert_receiver_channel_pulse(2) - 1492/ROLL_RATE_FACTOR;
+    pid_pitch_setpoint = (convert_receiver_channel_pulse(2) - 1492)/ROLL_RATE_FACTOR;
   }
 
   if(convert_receiver_channel_pulse(4) > 1508)
   {
-    pid_yaw_setpoint = convert_receiver_channel_pulse(4) - 1508/ROLL_RATE_FACTOR;
+    pid_yaw_setpoint = (convert_receiver_channel_pulse(4) - 1508)/ROLL_RATE_FACTOR;
   }
   else if(convert_receiver_channel_pulse(4) < 1492)
   {
-    pid_yaw_setpoint = convert_receiver_channel_pulse(4) - 1492/ROLL_RATE_FACTOR;
+    pid_yaw_setpoint = (convert_receiver_channel_pulse(4) - 1492)/ROLL_RATE_FACTOR;
   }
 
   calculate_pid();
+
 
   battery_voltage = ((battery_voltage * 0.92) + ((analogRead(0) + 65) * 1.2317) * 0.08);
   
@@ -498,15 +500,15 @@ void loop()
     }
     if(timer_channel_2 <= esc_loop_timer)
     {
-      PORTH &= B11101111;
+      PORTH &= B11011111;
     }
     if(timer_channel_3 <= esc_loop_timer)
     {
-      PORTH &= B11011111;
+      PORTH &= B10111111;
     }
     if(timer_channel_4 <= esc_loop_timer)
     {
-      PORTH &= B10111111;
+      PORTH &= B11101111;
     }
   }
 }
