@@ -41,6 +41,7 @@ int channel_high_values_array[4] = {2000,1988,1988,1984};
 int channel_low_values_array[4] = {1020,1016,1012,988};
 
 int throttle, battery_voltage;
+int esc_1, esc_2, esc_3, esc_4;
 
 //PID Variables
 float pid_p_gain_roll = 1.3;               //Gain setting for the roll P-controller (1.3)
@@ -401,8 +402,40 @@ void loop()
 
   calculate_pid();
 
-  battery_voltage = (battery_voltage * 0.92) + (analogRead(0) + )
+  battery_voltage = ((battery_voltage * 0.92) + ((analogRead(0) + 65) * 1.2317) * 0.08);
+  
+  if((battery_voltage < 1050) && (battery_voltage > 600))
+  {
+    digitalWrite(2, HIGH);
+  }
 
+  throttle = convert_receiver_channel_pulse(3);
+
+  if(status == 2)
+  {
+    if(throttle > 1800)
+    {
+      throttle = 1800;
+    }
+
+    esc_1 = throttle - pid_output_pitch + pid_output_roll - pid_output_yaw; //Calculate the pulse for esc 1 (front-right - CCW)
+    esc_2 = throttle + pid_output_pitch + pid_output_roll + pid_output_yaw; //Calculate the pulse for esc 2 (rear-right - CW)
+    esc_3 = throttle + pid_output_pitch - pid_output_roll - pid_output_yaw; //Calculate the pulse for esc 3 (rear-left - CCW)
+    esc_4 = throttle - pid_output_pitch - pid_output_roll + pid_output_yaw; //Calculate the pulse for esc 4 (front-left - CW)
+
+    
+    if (battery_voltage < 1240 && battery_voltage > 800)                  //Check if the battery is connected
+    {                   
+      esc_1 = esc_1 + (esc_1 * ((1240 - battery_voltage)/(float)3500));              //Compensate the esc-1 pulse for voltage drop.
+      esc_2 = esc_2 + (esc_2 * ((1240 - battery_voltage)/(float)3500));              //Compensate the esc-2 pulse for voltage drop.
+      esc_3 = esc_3 + (esc_3 * ((1240 - battery_voltage)/(float)3500));              //Compensate the esc-3 pulse for voltage drop.
+      esc_4 = esc_4 + (esc_4 * ((1240 - battery_voltage)/(float)3500));              //Compensate the esc-4 pulse for voltage drop.
+    } 
+
+
+
+
+  }
 
 
 
