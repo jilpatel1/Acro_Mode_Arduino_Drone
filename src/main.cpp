@@ -31,7 +31,7 @@ int status;
 byte channel_1_state, channel_2_state, channel_3_state, channel_4_state;
 unsigned long timer_1, timer_2, timer_3, timer_4;
 unsigned long current_time;
-unsigned long zero_timer;
+unsigned long loop_timer;
 unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4;
 unsigned long esc_loop_timer;
 
@@ -327,7 +327,7 @@ void setup()
       }
     }
 
-    if((convert_receiver_channel_pulse(3) < 1100) && (convert_receiver_channel_pulse(4) < 1100))
+    if(convert_receiver_channel_pulse(3) < 1100)
     {
       break;
     }
@@ -335,7 +335,7 @@ void setup()
 
   status = 0;
   digitalWrite(2, LOW);
-  zero_timer = micros();
+  battery_voltage = (analogRead(0) + 65) * 1.2317;
 }
 
 void loop()
@@ -432,44 +432,84 @@ void loop()
       esc_4 = esc_4 + (esc_4 * ((1240 - battery_voltage)/(float)3500));              //Compensate the esc-4 pulse for voltage drop.
     } 
 
+    if(esc_1 < 1200)
+    {
+      esc_1 = 1200;
+    }
 
+    if(esc_2 < 1200)
+    {
+      esc_2 = 1200;
+    }
 
+    if(esc_3 < 1200)
+    {
+      esc_3 = 1200;
+    }
+  
+    if(esc_4 < 1200)
+    {
+      esc_4 = 1200;
+    }
 
+    if(esc_1 > 2000)
+    {
+      esc_1 = 2000;
+    }
+
+    if(esc_2 > 2000)
+    {
+      esc_2 = 2000;
+    }
+
+    if(esc_3 > 2000)
+    {
+      esc_3 = 2000;
+    }
+  
+    if(esc_4 > 2000)
+    {
+      esc_4 = 2000;
+    }
   }
 
+  else
+  {
+    esc_1 = 1000;
+    esc_2 = 1000;
+    esc_3 = 1000;
+    esc_4 = 1000;
+  }
+  
+  while(micros() - loop_timer < 4000);
+  loop_timer = micros();
+  PORTH |= B01111000;
+  timer_channel_1 = esc_1 + loop_timer;
+  timer_channel_2 = esc_2 + loop_timer;
+  timer_channel_3 = esc_3 + loop_timer;
+  timer_channel_4 = esc_4 + loop_timer;
 
-
-
-
-
-
-  // while(zero_timer + 4000 > micros());
-  // zero_timer = micros();
-  // PORTH |= B01111000;
-  // timer_channel_1 = convert_receiver_channel_pulse(3) + zero_timer;
-  // timer_channel_2 = convert_receiver_channel_pulse(3) + zero_timer;
-  // timer_channel_3 = convert_receiver_channel_pulse(3) + zero_timer;
-  // timer_channel_4 = convert_receiver_channel_pulse(3) + zero_timer;
-
-  // while((PORTH & B01111000) != 0)
-  // {
-  //   esc_loop_timer = micros();
-  //   if(timer_channel_1 <= esc_loop_timer)
-  //   {
-  //     PORTH &= B11110111;
-  //   }
-  //   if(timer_channel_2 <= esc_loop_timer)
-  //   {
-  //     PORTH &= B11101111;
-  //   }
-  //   if(timer_channel_3 <= esc_loop_timer)
-  //   {
-  //     PORTH &= B11011111;
-  //   }
-  //   if(timer_channel_4 <= esc_loop_timer)
-  //   {
-  //     PORTH &= B10111111;
-  //   }
-  // }
+  while((PORTH & B01111000) != 0)
+  {
+    esc_loop_timer = micros();
+    if(timer_channel_1 <= esc_loop_timer)
+    {
+      PORTH &= B11110111;
+    }
+    if(timer_channel_2 <= esc_loop_timer)
+    {
+      PORTH &= B11101111;
+    }
+    if(timer_channel_3 <= esc_loop_timer)
+    {
+      PORTH &= B11011111;
+    }
+    if(timer_channel_4 <= esc_loop_timer)
+    {
+      PORTH &= B10111111;
+    }
+  }
 }
+
+
 
